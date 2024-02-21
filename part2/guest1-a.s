@@ -6,7 +6,7 @@ _start:
     xorw %ax, %ax
     
 loop1:
-    
+    out %ax, $0x10
     inc %ax
     jmp loop1
 

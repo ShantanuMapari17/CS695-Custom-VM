@@ -6,40 +6,15 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <sys/ioctl.h>
-#include <unistd.h>
-#include <time.h>
-#include <signal.h>
-#include <string.h>
 #define _GNU_SOURCE
 #include <unistd.h>
-#include <bits/types/timer_t.h>
 
 #define KVM_DEVICE "/dev/kvm"
 #define RAM_SIZE 512000000
 #define CODE_START 0x1000
-#define BINARY_FILE1 "guest1.bin"
-#define BINARY_FILE2 "guest2.bin"
+#define BINARY_FILE1 "guest1-a.bin"
+#define BINARY_FILE2 "guest2-a.bin"
 #define CURRENT_TIME ((double)clock() / CLOCKS_PER_SEC)
-
-#define SIG SIGUSR1
-#define CLOCKID CLOCK_MONOTONIC
-#define QUANTUM 1
-#define FRAC_A  0.7
-#define FRAC_B  0.3
-
-
-
-//write signal handler
-static void handler(int sig, siginfo_t *si, void *uc)
-{
-    timer_t *tidp;
-
-    tidp = si->si_value.sival_ptr;
-
-    // printf("Caught signal %d\n", sig);
-    // printf("    *sival_ptr         = %ld\n", (long)*tidp);
-    // signal(sig, SIG_IGN);
-}
 
 struct vm
 {
@@ -236,128 +211,68 @@ void *kvm_cpu_thread(void *data)
     int ret = 0;
     kvm_reset_vcpu(vm->vcpus);
 
-    
-    printf("VMFD: %d started running\n", vm->vm_fd);
-    ret = ioctl(vm->vcpus->vcpu_fd, KVM_RUN, 0);
-
-    printf("VMFD: %d stopped running - exit reason: %d\n", vm->vm_fd, vm->vcpus->kvm_run->exit_reason);
-
-    switch (vm->vcpus->kvm_run->exit_reason)
+    while (1)
     {
-    case KVM_EXIT_UNKNOWN:
-        printf("VMFD: %d KVM_EXIT_UNKNOWN\n", vm->vm_fd);
-        break;
-    case KVM_EXIT_DEBUG:
-        printf("VMFD: %d KVM_EXIT_DEBUG\n", vm->vm_fd);
-        break;
-    case KVM_EXIT_IO:
-        printf("VMFD: %d KVM_EXIT_IO\n", vm->vm_fd);
-        printf("VMFD: %d out port: %d, data: %d\n", vm->vm_fd, vm->vcpus->kvm_run->io.port, *(int *)((char *)(vm->vcpus->kvm_run) + vm->vcpus->kvm_run->io.data_offset));
-        sleep(1);
-        break;
-    case KVM_EXIT_MMIO:
-        printf("VMFD: %d KVM_EXIT_MMIO\n", vm->vm_fd);
-        break;
-    case KVM_EXIT_INTR:
-        printf("VMFD: %d KVM_EXIT_INTR\n", vm->vm_fd);
-        break;
-    case KVM_EXIT_SHUTDOWN:
-        printf("VMFD: %d KVM_EXIT_SHUTDOWN\n", vm->vm_fd);
-        goto exit_kvm;
-        break;
-    default:
-        printf("VMFD: %d KVM PANIC\n", vm->vm_fd);
-        printf("VMFD: %d KVM exit reason: %d\n", vm->vm_fd, vm->vcpus->kvm_run->exit_reason);
-        goto exit_kvm;
+        printf("VMFD: %d started running\n", vm->vm_fd);
+        ret = ioctl(vm->vcpus->vcpu_fd, KVM_RUN, 0);
+
+        printf("VMFD: %d stopped running - exit reason: %d\n", vm->vm_fd, vm->vcpus->kvm_run->exit_reason);
+
+        switch (vm->vcpus->kvm_run->exit_reason)
+        {
+        case KVM_EXIT_UNKNOWN:
+            printf("VMFD: %d KVM_EXIT_UNKNOWN\n", vm->vm_fd);
+            break;
+        case KVM_EXIT_DEBUG:
+            printf("VMFD: %d KVM_EXIT_DEBUG\n", vm->vm_fd);
+            break;
+        case KVM_EXIT_IO:
+            printf("VMFD: %d KVM_EXIT_IO\n", vm->vm_fd);
+            printf("VMFD: %d out port: %d, data: %d\n", vm->vm_fd, vm->vcpus->kvm_run->io.port, *(int *)((char *)(vm->vcpus->kvm_run) + vm->vcpus->kvm_run->io.data_offset));
+            sleep(1);
+            goto exit_kvm;
+            break;
+        case KVM_EXIT_MMIO:
+            printf("VMFD: %d KVM_EXIT_MMIO\n", vm->vm_fd);
+            break;
+        case KVM_EXIT_INTR:
+            printf("VMFD: %d KVM_EXIT_INTR\n", vm->vm_fd);
+            break;
+        case KVM_EXIT_SHUTDOWN:
+            printf("VMFD: %d KVM_EXIT_SHUTDOWN\n", vm->vm_fd);
+            goto exit_kvm;
+            break;
+        default:
+            printf("VMFD: %d KVM PANIC\n", vm->vm_fd);
+            printf("VMFD: %d KVM exit reason: %d\n", vm->vm_fd, vm->vcpus->kvm_run->exit_reason);
+            goto exit_kvm;
+        }
+
+        if (ret < 0 && vm->vcpus->kvm_run->exit_reason != KVM_EXIT_INTR)
+        {
+            fprintf(stderr, "VMFD: %d KVM_RUN failed\n", vm->vm_fd);
+            printf("VMFD: %d KVM_RUN return value %d\n", vm->vm_fd, ret);
+            exit(1);
+        }
     }
 
-    if (ret < 0 && vm->vcpus->kvm_run->exit_reason != KVM_EXIT_INTR)
-    {
-        fprintf(stderr, "VMFD: %d KVM_RUN failed\n", vm->vm_fd);
-        printf("VMFD: %d KVM_RUN return value %d\n", vm->vm_fd, ret);
-        exit(1);
-    }
-    else if(ret<0 && vm->vcpus->kvm_run->exit_reason == KVM_EXIT_INTR){
-        // printf("Interrupted occured\n");
-        // printf("VMFD: %d KVM_RUN failed\n", vm->vm_fd);
-        // printf("VMFD: %d KVM_RUN return value %d\n", vm->vm_fd, ret);
-    }
-    
-
-    exit_kvm:
-        return 0;
-}
-
-void setTimer(int turn){
-    timer_t timerid;
-    sigset_t mask;
-    struct sigevent sev;
-    struct sigaction sa;
-    struct itimerspec its;
-
-    /* Establish handler for timer signal. */
-    // printf("Establishing handler for signal %d\n", SIG);
-    sa.sa_flags = SA_SIGINFO;
-    sa.sa_sigaction = handler;
-    sigemptyset(&sa.sa_mask);
-    if (sigaction(SIG, &sa, NULL) == -1)
-        perror("sigaction");
-
-    /* Block timer signal temporarily. */
-    // printf("Blocking signal %d\n", SIG);
-    sigemptyset(&mask);
-    sigaddset(&mask, SIG);
-    if (sigprocmask(SIG_SETMASK, &mask, NULL) == -1)
-        perror("sigprocmask");
-
-    /* Create the timer. */
-    sev.sigev_notify = SIGEV_SIGNAL;
-    sev.sigev_signo = SIG;
-    sev.sigev_value.sival_ptr = &timerid;
-    if (timer_create(CLOCKID, &sev, &timerid) == -1)
-        perror("timer_create");
-
-    // printf("timer ID is %d\n", (uintmax_t) timerid);
-
-    /* Start the timer. */
-    
-    its.it_value.tv_sec = 0;
-    its.it_value.tv_nsec = 1e9 * QUANTUM * (turn==1?FRAC_A:FRAC_B);
-    its.it_interval.tv_sec = 0;
-    its.it_interval.tv_nsec = 0;
-
-    if (timer_settime(timerid, 0, &its, NULL) == -1)
-         perror("timer_settime");
-
-    
-
-    /* Unlock the timer signal, so that timer notification
-              can be delivered. */
-
-    // printf("Unblocking signal %d\n", SIG);
-    if (sigprocmask(SIG_UNBLOCK, &mask, NULL) == -1)
-        perror("sigprocmask");
-
-    
+exit_kvm:
+    return 0;
 }
 
 void kvm_run_vm(struct vm *vm1, struct vm *vm2)
 {
-    int turn=1;    
-    
+    int turn=1;
     while(1){
-        setTimer(turn);
-        printf("Time: %f\n", CURRENT_TIME);
         if(turn==1){
             kvm_cpu_thread(vm1);
-            turn=2;
+            turn=0;
         }
         else{
             kvm_cpu_thread(vm2);
             turn=1;
         }
     }
-
     // Remove everything in the function above this line and replace it with your code here
 
 }

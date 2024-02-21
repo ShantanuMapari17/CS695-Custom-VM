@@ -23,11 +23,6 @@
 
 #define SIG SIGUSR1
 #define CLOCKID CLOCK_MONOTONIC
-#define QUANTUM 1
-#define FRAC_A  0.7
-#define FRAC_B  0.3
-
-
 
 //write signal handler
 static void handler(int sig, siginfo_t *si, void *uc)
@@ -288,7 +283,7 @@ void *kvm_cpu_thread(void *data)
         return 0;
 }
 
-void setTimer(int turn){
+void setTimer(){
     timer_t timerid;
     sigset_t mask;
     struct sigevent sev;
@@ -321,8 +316,8 @@ void setTimer(int turn){
 
     /* Start the timer. */
     
-    its.it_value.tv_sec = 0;
-    its.it_value.tv_nsec = 1e9 * QUANTUM * (turn==1?FRAC_A:FRAC_B);
+    its.it_value.tv_sec = 1;
+    its.it_value.tv_nsec = 1;
     its.it_interval.tv_sec = 0;
     its.it_interval.tv_nsec = 0;
 
@@ -346,7 +341,7 @@ void kvm_run_vm(struct vm *vm1, struct vm *vm2)
     int turn=1;    
     
     while(1){
-        setTimer(turn);
+        setTimer();
         printf("Time: %f\n", CURRENT_TIME);
         if(turn==1){
             kvm_cpu_thread(vm1);

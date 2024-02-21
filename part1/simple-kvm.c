@@ -275,7 +275,7 @@ int run_vm(struct vm *vm, struct vcpu *vcpu, size_t sz)
 				}
 				else{
 					hva=0x0;
-					// printf("Invlaid address\n");
+					printf("Invlaid address\n");
 					memcpy((uint32_t *)(vm->mem+gva_addr),&hva,4);
 				}
 				

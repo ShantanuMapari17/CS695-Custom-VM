@@ -2,7 +2,9 @@
 #include <stdint.h>
 // #include<stdio.h>>
 // #include<string.h>
-char ans[1000];
+char ans1[100];
+char ans2[100];
+int flag=1;
 static void outb(uint16_t port, uint8_t value) {
 	asm("outb %0,%1" : /* empty */ : "a" (value), "Nd" (port) : "memory");
 }
@@ -113,7 +115,16 @@ void resetString(char* s1,int size){
 char *HC_numExitsByType()
 {
 	// Fill in here
-	resetString(ans,1000);
+	char* ans;
+	if(flag==1){
+		ans=ans1;
+		flag=0;
+	}
+	else{
+		ans=ans2;
+		flag=1;
+	}
+	resetString(ans,100);
 	uint32_t inExits = HC_num_IN_exits();
 	uint32_t outExits = HC_num_OUT_exits();
 	char inCnt[10];
